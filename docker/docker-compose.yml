@@ -1,0 +1,128 @@
+version: '3'
+
+services:
+  rabbitmq:
+    image: rabbitmq:3-management-alpine
+    restart: unless-stopped
+    ports:
+      - "${RABBITMQ_MANAGEMENT_PORT:-15672}:15672"
+    environment:
+      - RABBITMQ_MANAGEMENT_PORT
+
+  collector-pc:
+    image: ghcr.io/nanite-systems/stream-collector
+    restart: unless-stopped
+    environment:
+      - RABBITMQ_URL=amqp://guest:guest@rabbitmq:5672
+      - RABBITMQ_EVENT_EXCHANGE=cr-collector
+      - SERVICE_ID
+      - PS2_ENVIRONMENT=ps2
+      - RESUBSCRIBE_INTERVAL=18000000
+      - SUBSCRIBE_EVENTS=all
+      - SUBSCRIBE_WORLDS=all
+      - SUBSCRIBE_LOGICAL_AND=false
+    depends_on:
+      - rabbitmq
+    deploy:
+      replicas: 3
+
+  collector-ps4eu:
+    image: ghcr.io/nanite-systems/stream-collector
+    restart: unless-stopped
+    environment:
+      - RABBITMQ_URL=amqp://guest:guest@rabbitmq:5672
+      - RABBITMQ_EVENT_EXCHANGE=cr-collector
+      - SERVICE_ID
+      - PS2_ENVIRONMENT=ps2ps4eu
+      - RESUBSCRIBE_INTERVAL=18000000
+      - SUBSCRIBE_EVENTS=all
+      - SUBSCRIBE_WORLDS=all
+      - SUBSCRIBE_LOGICAL_AND=false
+    depends_on:
+      - rabbitmq
+    deploy:
+      replicas: 3
+
+  collector-ps4us:
+    image: ghcr.io/nanite-systems/stream-collector
+    restart: unless-stopped
+    environment:
+      - RABBITMQ_URL=amqp://guest:guest@rabbitmq:5672
+      - RABBITMQ_EVENT_EXCHANGE=cr-collector
+      - SERVICE_ID
+      - PS2_ENVIRONMENT=ps2ps4us
+      - RESUBSCRIBE_INTERVAL=18000000
+      - SUBSCRIBE_EVENTS=all
+      - SUBSCRIBE_WORLDS=all
+      - SUBSCRIBE_LOGICAL_AND=false
+    depends_on:
+      - rabbitmq
+    deploy:
+      replicas: 3
+
+  multiplexer:
+    image: ghcr.io/nanite-systems/stream-multiplexer
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      - APP_PORT=3000
+      - RABBITMQ_URL=amqp://guest:guest@localhost:5672
+      - RABBITMQ_INGRESS_EXCHANGE=cr-collector
+      - RABBITMQ_PUBLISH_EXCHANGE=cr-stream
+      - SERVICE_ID
+    depends_on:
+      - rabbitmq
+
+  manifold:
+    image: ghcr.io/nanite-systems/stream-manifold
+    restart: unless-stopped
+    ports:
+      - '${APP_PORT:-8000}:8000'
+    env_file: .env
+    environment:
+      - APP_PORT=8000
+      - RABBITMQ_URL=amqp://guest:guest@localhost:5672
+      - RABBITMQ_INGRESS_EXCHANGE=cr-stream
+      - MULTIPLEXER_ENDPOINT=http://multiplexer:3000
+    depends_on:
+      - rabbitmq
+      - multiplexer
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.stream.rule=Host(`${DOMAIN}`)&&PATH(`/streaming`)"
+      - "traefik.http.middlewares.test-auth.forwardauth.address=http://auth:3000/auth"
+      - "traefik.http.routers.stream.entrypoints=web"
+
+  auth:
+    image: ghcr.io/nanite-systems/auth
+    restart: unless-stopped
+    depends_on:
+      - auth-redis
+    env_file:
+      - .env
+    environment:
+      - REDIS_URL=redis://redis:6379
+
+  auth-redis:
+    image: redis:alpine
+    restart: unless-stopped
+    volumes:
+      - auth-redis:/data
+
+  proxy:
+    image: traefik:alpine
+    restart: unless-stopped
+    command:
+      - "--api.insecure=true"
+      - "--providers.docker=true"
+      - "--providers.docker.exposedbydefault=false"
+      - "--entrypoints.web.address=:80"
+    ports:
+      - "${PROXY_PORT:-80}:80"
+      - "${PROXY_MANAGEMENT_PORT:-8080}:8080"
+    volumes:
+      - "/var/run/docker.sock:/var/run/docker.sock:ro"
+
+volumes:
+  auth-redis:
+
