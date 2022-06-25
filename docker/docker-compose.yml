@@ -10,7 +10,7 @@ services:
       - RABBITMQ_MANAGEMENT_PORT
 
   collector-pc:
-    image: ghcr.io/nanite-systems/stream-collector
+    image: ghcr.io/nanite-systems/stream-collector:latest
     restart: unless-stopped
     environment:
       - RABBITMQ_URL=amqp://guest:guest@rabbitmq:5672
@@ -27,7 +27,7 @@ services:
       replicas: 3
 
   collector-ps4eu:
-    image: ghcr.io/nanite-systems/stream-collector
+    image: ghcr.io/nanite-systems/stream-collector:latest
     restart: unless-stopped
     environment:
       - RABBITMQ_URL=amqp://guest:guest@rabbitmq:5672
@@ -44,7 +44,7 @@ services:
       replicas: 3
 
   collector-ps4us:
-    image: ghcr.io/nanite-systems/stream-collector
+    image: ghcr.io/nanite-systems/stream-collector:latest
     restart: unless-stopped
     environment:
       - RABBITMQ_URL=amqp://guest:guest@rabbitmq:5672
@@ -61,12 +61,12 @@ services:
       replicas: 3
 
   multiplexer:
-    image: ghcr.io/nanite-systems/stream-multiplexer
+    image: ghcr.io/nanite-systems/stream-multiplexer:latest
     restart: unless-stopped
     env_file: .env
     environment:
       - APP_PORT=3000
-      - RABBITMQ_URL=amqp://guest:guest@localhost:5672
+      - RABBITMQ_URL=amqp://guest:guest@rabbitmq:5672
       - RABBITMQ_INGRESS_EXCHANGE=cr-collector
       - RABBITMQ_PUBLISH_EXCHANGE=cr-stream
       - SERVICE_ID
@@ -74,14 +74,14 @@ services:
       - rabbitmq
 
   manifold:
-    image: ghcr.io/nanite-systems/stream-manifold
+    image: ghcr.io/nanite-systems/stream-manifold:latest
     restart: unless-stopped
     ports:
       - '${APP_PORT:-8000}:8000'
     env_file: .env
     environment:
       - APP_PORT=8000
-      - RABBITMQ_URL=amqp://guest:guest@localhost:5672
+      - RABBITMQ_URL=amqp://guest:guest@rabbitmq:5672
       - RABBITMQ_INGRESS_EXCHANGE=cr-stream
       - MULTIPLEXER_ENDPOINT=http://multiplexer:3000
     depends_on:
@@ -90,13 +90,13 @@ services:
     labels:
       - "traefik.enable=true"
       - "traefik.http.routers.stream.rule=Host(`${DOMAIN}`)&&PATH(`/streaming`)"
-      - "traefik.http.middlewares.stream-prefix.stripprefix.prefixes=/streaming"
       - "traefik.http.middlewares.stream-auth.forwardauth.address=http://auth:3000/auth"
+      - "traefik.http.middlewares.stream-prefix.stripprefix.prefixes=/streaming"
       - "traefik.http.routers.stream.entrypoints=web"
       - "traefik.http.routers.stream.middlewares=stream-auth@docker,stream-prefix@docker"
 
   auth:
-    image: ghcr.io/nanite-systems/auth
+    image: ghcr.io/nanite-systems/auth:latest
     restart: unless-stopped
     depends_on:
       - auth-redis
